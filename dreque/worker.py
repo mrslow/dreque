@@ -1,6 +1,7 @@
 
 import os
 import logging
+import signal
 import socket
 import time
 from dreque.base import Dreque
@@ -16,44 +17,52 @@ class DrequeWorker(Dreque):
         self.pid = os.getpid()
         self.worker_id = "%s:%d" % (self.hostname, self.pid)
         self.nofork = nofork
+        self.child = None
+        self._shutdown = None
 
     def work(self, interval=5):
         self.register_worker()
+        self.register_signal_handlers()
 
         setprocname("dreque: Starting")
 
+        self._shutdown = None
         try:
-            while True:
-                job = self.dequeue(self.queues)
-                if not job:
-                    if interval == 0:
-                        break
-                    setprocname("dreque: Waiting for %s" % ",".join(self.queues))
-                    time.sleep(interval)
-                    continue
-
-                try:
-                    self.working_on(job)
-                    self.process(job)
-                except Exception, exc:
-                    import traceback
-                    self.log.info("Job failed (%s): %s\n%s" % (job, str(exc), traceback.format_exc()))
-                    # Requeue
-                    queue = job.pop("queue")
-                    if 'fails' not in job:
-                        job['fails'] = 1
-                    else:
-                        job['fails'] += 1
-                    if job['fails'] < 10:
-                        self.push_delayed(queue, job, 2**job['fails'])
-                    self.failed()
-                else:
-                    self.done_working()
-
+            while not self._shutdown:
+                worked = self.work_once()
                 if interval == 0:
                     break
+
+                if not worked:
+                    setprocname("dreque: Waiting for %s" % ",".join(self.queues))
+                    time.sleep(interval)
         finally:
             self.unregister_worker()
+
+    def work_once(self):
+        job = self.dequeue(self.queues)
+        if not job:
+            return False
+
+        try:
+            self.working_on(job)
+            self.process(job)
+        except Exception, exc:
+            import traceback
+            self.log.info("Job failed (%s): %s\n%s" % (job, str(exc), traceback.format_exc()))
+            # Requeue
+            queue = job.pop("queue")
+            if 'fails' not in job:
+                job['fails'] = 1
+            else:
+                job['fails'] += 1
+            if job['fails'] < 10:
+                self.push(queue, job, 2**job['fails'])
+            self.failed()
+        else:
+            self.done_working()
+
+        return True
 
     def process(self, job):
         if self.nofork:
@@ -61,19 +70,66 @@ class DrequeWorker(Dreque):
         else:
             from multiprocessing import Process
 
-            p = Process(target=self.dispatch, args=(job,))
-            p.start()
-            setprocname("dreque: Forked %d at %d" % (p.pid, time.time()))
-            p.join()
+            child = Process(target=self.dispatch_child, args=(job,))
+            child.start()
+            self.child = child
+            setprocname("dreque: Forked %d at %d" % (child.pid, time.time()))
+            while True:
+                try:
+                    child.join()
+                except OSError, exc:
+                    if 'Interrupted system call' not in exc:
+                        raise
+                    continue
+                break
+            self.child = None
 
-            if p.exitcode != 0:
+            if child.exitcode != 0:
                 raise Exception("Job failed")
+
+    def dispatch_child(self, job):
+        self.reset_signal_handlers()
+        self.dispatch(job)
 
     def dispatch(self, job):
         setprocname("dreque: Processing %s since %d" % (job['queue'], time.time()))
         func = self.lookup_function(job['func'])
         kwargs = dict((str(k), v) for k, v in job['kwargs'].items())
         func(*job['args'], **kwargs)
+
+    #
+
+    def register_signal_handlers(self):
+        signal.signal(signal.SIGTERM, lambda signum,frame:self.shutdown())
+        signal.signal(signal.SIGINT, lambda signum,frame:self.shutdown())
+        signal.signal(signal.SIGQUIT, lambda signum,frame:self.graceful_shutdown())
+        signal.signal(signal.SIGUSR1, lambda signum,frame:self.kill_child())
+
+    def reset_signal_handlers(self):
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+        signal.signal(signal.SIGQUIT, signal.SIG_DFL)
+        signal.signal(signal.SIGUSR1, signal.SIG_DFL)
+
+    def shutdown(self, signum=None, frame=None):
+        """Shutdown immediately without waiting for job to complete"""
+        self.log.info("Worker %s shutting down" % self.worker_id)
+        self._shutdown = "forced"
+        self.kill_child()
+
+    def graceful_shutdown(self, signum=None, frame=None):
+        """Shutdown gracefully waiting for job to finish"""
+        self.log.info("Worker %s shutting down gracefully" % self.worker_id)
+        self._shutdown = "graceful"
+
+    def kill_child(self):
+        if self.child:
+            self.log.info("Killing child %s" % self.child)
+            if self.child.is_alive():
+                self.child.terminate()
+            self.child = None
+
+    #
 
     def register_worker(self):
         self.redis.sadd(self._redis_key("workers"), self.worker_id)
