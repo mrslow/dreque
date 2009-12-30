@@ -87,9 +87,10 @@ class Dreque(object):
 
     def enqueue(self, queue, func, *args, **kwargs):
         delay = kwargs.pop('_delay', None)
+        max_retries = kwargs.pop('_max_retries', 5)
         if not isinstance(func, basestring):
             func = "%s.%s" % (func.__module__, func.__name__)
-        self.push(queue, dict(func=func, args=args, kwargs=kwargs), delay)
+        self.push(queue, dict(func=func, args=args, kwargs=kwargs, retries_left=max_retries), delay=delay)
 
     def dequeue(self, queues, worker_queue=None):
         now = time.time()

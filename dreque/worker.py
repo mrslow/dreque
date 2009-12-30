@@ -1,14 +1,19 @@
 
+import copy
 import os
 import logging
 import signal
 import socket
 import time
+from multiprocessing import Process
+
 from dreque.base import Dreque
 from dreque.utils import setprocname
 
+SUPPORTED_DISPATCHERS = ("nofork", "fork") # "pool"
+
 class DrequeWorker(Dreque):
-    def __init__(self, queues, server, db=None, nofork=False):
+    def __init__(self, queues, server, db=None, dispatcher="fork"):
         self.queues = queues
         self.function_cache = {}
         super(DrequeWorker, self).__init__(server, db)
@@ -16,9 +21,11 @@ class DrequeWorker(Dreque):
         self.hostname = socket.gethostname()
         self.pid = os.getpid()
         self.worker_id = "%s:%d" % (self.hostname, self.pid)
-        self.nofork = nofork
+        self.dispatcher = dispatcher
         self.child = None
         self._shutdown = None
+        if dispatcher not in SUPPORTED_DISPATCHERS:
+            raise TypeError("Unsupported dispatcher %s" % dispatcher)
 
     def work(self, interval=5):
         self.register_worker()
@@ -52,24 +59,24 @@ class DrequeWorker(Dreque):
             self.log.info("Job failed (%s): %s\n%s" % (job, str(exc), traceback.format_exc()))
             # Requeue
             queue = job.pop("queue")
-            if 'fails' not in job:
-                job['fails'] = 1
+            if 'fail' not in job:
+                job['fail'] = [str(exc)]
             else:
-                job['fails'] += 1
-            if job['fails'] < 10:
-                self.push(queue, job, 2**job['fails'])
-            self.failed()
+                job['fail'].append(str(exc))
+            job['retries_left'] = job.get('retries_left', 1) - 1
+            if job['retries_left'] > 0:
+                self.push(queue, job, 2**len(job['fail']))
+                self.stats.incr("retries")
+                self.stats.incr("retries:" + self.worker_id)
+            else:
+                self.failed()
         else:
             self.done_working()
 
         return True
 
     def process(self, job):
-        if self.nofork:
-            self.dispatch(job)
-        else:
-            from multiprocessing import Process
-
+        if self.dispatcher == "fork":
             child = Process(target=self.dispatch_child, args=(job,))
             child.start()
             self.child = child
@@ -85,7 +92,9 @@ class DrequeWorker(Dreque):
             self.child = None
 
             if child.exitcode != 0:
-                raise Exception("Job failed")
+                raise Exception("Job failed with exitcode %d" % child.exitcode)
+        else: # nofork
+            self.dispatch(copy.deepcopy(job))
 
     def dispatch_child(self, job):
         self.reset_signal_handlers()
