@@ -15,7 +15,7 @@ class BinaryRedis(Redis):
         return s
 
 class Dreque(object):
-    def __init__(self, server, db=None, key_prefix="dreque:"):
+    def __init__(self, server, db=None, key_prefix="dreque:", serializer=serializer):
         self.log = logging.getLogger("dreque")
 
         if isinstance(server, (tuple, list)):
@@ -33,6 +33,7 @@ class Dreque(object):
         self.key_prefix = key_prefix
         self.watched_queues = set()
         self.stats = StatsCollector(self.redis, self.key_prefix)
+        self.serializer = serializer
 
     # Low level
 
@@ -129,10 +130,10 @@ class Dreque(object):
     #
 
     def encode(self, value):
-        return serializer.dumps(value)
+        return self.serializer.dumps(value)
 
     def decode(self, value):
-        return serializer.loads(value)
+        return self.serializer.loads(value)
 
     def _queue_key(self, queue):
         return self._redis_key("queue:" + queue)
