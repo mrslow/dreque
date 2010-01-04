@@ -7,7 +7,12 @@ import logging
 import time
 from redis import Redis, ResponseError
 
+from dreque import serializer
 from dreque.stats import StatsCollector
+
+class BinaryRedis(Redis):
+    def _decode(self, s):
+        return s
 
 class Dreque(object):
     def __init__(self, server, db=None, key_prefix="dreque:"):
@@ -15,13 +20,13 @@ class Dreque(object):
 
         if isinstance(server, (tuple, list)):
             host, port = server
-            self.redis = Redis(server[0], server[1], db=db)
+            self.redis = BinaryRedis(server[0], server[1], db=db)
         elif isinstance(server, basestring):
             host = server
             port = None
             if ':' in server:
                 host, port = server.split(':')
-            self.redis = Redis(host, port, db=db)
+            self.redis = BinaryRedis(host, port, db=db)
         else:
             self.redis = server
 
@@ -124,10 +129,10 @@ class Dreque(object):
     #
 
     def encode(self, value):
-        return json.dumps(value)
+        return serializer.dumps(value)
 
     def decode(self, value):
-        return json.loads(value)
+        return serializer.loads(value)
 
     def _queue_key(self, queue):
         return self._redis_key("queue:" + queue)

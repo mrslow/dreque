@@ -16,13 +16,16 @@ def test_func(tempfile, text, delay=0, fail=False):
         fp.write(text)
 
 class TestDreque(unittest.TestCase):
+    db = None
+
     def setUp(self):
         import logging
         logging.basicConfig(level=logging.DEBUG)
         self.tempfile = tempfile.mkstemp()[1]
-        self.dreque = Dreque("127.0.0.1")
+        self.dreque = Dreque("127.0.0.1", db=self.db)
+        self.dreque.redis.flush()
         self.queue = "test"
-        self.dreque.remove_queue(self.queue)
+        # self.dreque.remove_queue(self.queue)
 
     def tearDown(self):
         os.unlink(self.tempfile)
@@ -33,8 +36,10 @@ class TestDreque(unittest.TestCase):
 
     def testSimple(self):
         self.dreque.push("test", "foo")
+        self.failUnlessEqual(self.dreque.size("test"), 1)
         self.failUnlessEqual(self.dreque.pop("test"), "foo")
         self.failUnlessEqual(self.dreque.pop("test"), None)
+        self.failUnlessEqual(self.dreque.size("test"), 0)
 
     def testFunction(self):
         import tests
@@ -46,14 +51,15 @@ class TestDreque(unittest.TestCase):
     def testPositionalWorker(self):
         import tests
         self.dreque.enqueue("test", tests.test_func, self.tempfile, "worker_test")
-        worker = DrequeWorker(["test"], "127.0.0.1")
+        worker = DrequeWorker(["test"], "127.0.0.1", db=self.db)
         worker.work(0)
         self.failUnlessEqual(self._get_output(), "worker_test")
+        self.failUnlessEqual(self.dreque.stats.get("processed"), 1)
 
     def testKeywordWorker(self):
         import tests
         self.dreque.enqueue("test", tests.test_func, tempfile=self.tempfile, text="worker_test")
-        worker = DrequeWorker(["test"], "127.0.0.1")
+        worker = DrequeWorker(["test"], "127.0.0.1", db=self.db)
         worker.work(0)
         self.failUnlessEqual(self._get_output(), "worker_test")
 
@@ -70,7 +76,7 @@ class TestDreque(unittest.TestCase):
         from multiprocessing import Process
     
         def worker():
-            w = DrequeWorker(["test"], "127.0.0.1")
+            w = DrequeWorker(["test"], "127.0.0.1", db=self.db)
             w.work(0)
     
         self.dreque.enqueue("test", tests.test_func, tempfile=self.tempfile, text="graceful", delay=2)
@@ -91,7 +97,7 @@ class TestDreque(unittest.TestCase):
         def worker():
             import logging
             logging.getLogger("dreque.worker").setLevel(logging.CRITICAL)
-            w = DrequeWorker(["test"], "127.0.0.1")
+            w = DrequeWorker(["test"], "127.0.0.1", db=self.db)
             w.work(0)
     
         self.dreque.enqueue("test", tests.test_func, tempfile=self.tempfile, text="graceful", delay=2)
@@ -111,7 +117,7 @@ class TestDreque(unittest.TestCase):
         def worker():
             import logging
             logging.getLogger("dreque.worker").setLevel(logging.CRITICAL)
-            w = DrequeWorker(["test"], "127.0.0.1")
+            w = DrequeWorker(["test"], "127.0.0.1", db=self.db)
             w.work(0.1)
     
         self.dreque.enqueue("test", tests.test_func, tempfile=self.tempfile, text=".", fail=True)
