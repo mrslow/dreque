@@ -7,12 +7,17 @@ import logging
 import time
 from redis import Redis, ResponseError
 
-from dreque import serializer
 from dreque.stats import StatsCollector
 
-class BinaryRedis(Redis):
-    def _decode(self, s):
-        return s
+if hasattr(Redis, '_decode'):
+    from dreque import serializer
+    class BinaryRedis(Redis):
+        def _decode(self, s):
+            return s
+else:
+    # Fall back to non-compressed serializer
+    BinaryRedis = Redis
+    serializer = json
 
 class Dreque(object):
     def __init__(self, server, db=None, key_prefix="dreque:", serializer=serializer):
