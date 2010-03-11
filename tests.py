@@ -23,7 +23,7 @@ class TestDreque(unittest.TestCase):
         logging.basicConfig(level=logging.DEBUG)
         self.tempfile = tempfile.mkstemp()[1]
         self.dreque = Dreque("127.0.0.1", db=self.db)
-        self.dreque.redis.flush()
+        self.dreque.redis.flushdb()
         self.queue = "test"
         # self.dreque.remove_queue(self.queue)
 

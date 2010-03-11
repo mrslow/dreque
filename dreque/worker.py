@@ -56,7 +56,7 @@ class DrequeWorker(Dreque):
             self.process(job)
         except Exception, exc:
             import traceback
-            self.log.info("Job failed (%s): %s\n%s" % (job, str(exc), traceback.format_exc()))
+            self.log.warning("Job failed (%s): %s\n%s" % (job, str(exc), traceback.format_exc()))
             # Requeue
             queue = job.pop("queue")
             if 'fail' not in job:

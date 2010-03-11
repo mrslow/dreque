@@ -28,6 +28,9 @@ class StatsCollector(object):
         except TypeError:
             return None
 
+    def set(self, key, value):
+        self.store.set(self._key(key), value)
+
     def clear(self, key):
         self.store.delete(self._key(key))
 
