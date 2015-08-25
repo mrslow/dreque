@@ -57,7 +57,8 @@ class DrequeWorker(Dreque):
             self.process(job)
         except Exception as exc:
             import traceback
-            self.log.warning("Job failed (%s): %s\n%s" % (job, str(exc), traceback.format_exc()))
+            self.log.warning("Job failed (%s): %s\n%s",
+                             job, str(exc), traceback.format_exc())
             # Requeue
             queue = job.pop("queue")
             if 'fail' not in job:
@@ -125,7 +126,7 @@ class DrequeWorker(Dreque):
         """
         Shutdown immediately without waiting for job to complete.
         """
-        self.log.info("Worker %s shutting down" % self.worker_id)
+        self.log.info("Worker %s shutting down", self.worker_id)
         self._shutdown = "forced"
         self.kill_child()
 
@@ -133,12 +134,12 @@ class DrequeWorker(Dreque):
         """
         Shutdown gracefully waiting for job to finish.
         """
-        self.log.info("Worker %s shutting down gracefully" % self.worker_id)
+        self.log.info("Worker %s shutting down gracefully", self.worker_id)
         self._shutdown = "graceful"
 
     def kill_child(self):
         if self.child:
-            self.log.info("Killing child %s" % self.child)
+            self.log.info("Killing child %s", self.child)
             if self.child.is_alive():
                 self.child.terminate()
             self.child = None
