@@ -15,7 +15,7 @@ See 'LICENSE' for details.
 Usage
 -----
 
-Submitting jobs:
+Submitting jobs::
 
     from dreque import Dreque
 
@@ -25,7 +25,7 @@ Submitting jobs:
     dreque = Dreque("127.0.0.1")
     dreque.enqueue("queue", some_job, argument="foo")
 
-Worker:
+Worker::
 
     from dreque import DrequeWorker
 

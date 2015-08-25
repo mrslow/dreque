@@ -1,4 +1,3 @@
-
 class StatsCollector(object):
     def __init__(self, store, prefix=''):
         self.store = store

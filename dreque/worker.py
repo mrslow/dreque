@@ -1,4 +1,3 @@
-
 import copy
 import os
 import logging
@@ -10,7 +9,9 @@ from multiprocessing import Process
 from dreque.base import Dreque
 from dreque.utils import setprocname
 
-SUPPORTED_DISPATCHERS = ("nofork", "fork") # "pool"
+
+SUPPORTED_DISPATCHERS = ("nofork", "fork")  # "pool"
+
 
 class DrequeWorker(Dreque):
     def __init__(self, queues, server, db=None, dispatcher="fork"):
@@ -54,7 +55,7 @@ class DrequeWorker(Dreque):
         try:
             self.working_on(job)
             self.process(job)
-        except Exception, exc:
+        except Exception as exc:
             import traceback
             self.log.warning("Job failed (%s): %s\n%s" % (job, str(exc), traceback.format_exc()))
             # Requeue
@@ -65,7 +66,7 @@ class DrequeWorker(Dreque):
                 job['fail'].append(str(exc))
             job['retries_left'] = job.get('retries_left', 1) - 1
             if job['retries_left'] > 0:
-                self.push(queue, job, 2**len(job['fail']))
+                self.push(queue, job, 2 ** len(job['fail']))
                 self.stats.incr("retries")
                 self.stats.incr("retries:" + self.worker_id)
             else:
@@ -84,7 +85,7 @@ class DrequeWorker(Dreque):
             while True:
                 try:
                     child.join()
-                except OSError, exc:
+                except OSError as exc:
                     if 'Interrupted system call' not in exc:
                         raise
                     continue
@@ -93,7 +94,7 @@ class DrequeWorker(Dreque):
 
             if child.exitcode != 0:
                 raise Exception("Job failed with exitcode %d" % child.exitcode)
-        else: # nofork
+        else:  # nofork
             self.dispatch(copy.deepcopy(job))
 
     def dispatch_child(self, job):
@@ -109,10 +110,10 @@ class DrequeWorker(Dreque):
     #
 
     def register_signal_handlers(self):
-        signal.signal(signal.SIGTERM, lambda signum,frame:self.shutdown())
-        signal.signal(signal.SIGINT, lambda signum,frame:self.shutdown())
-        signal.signal(signal.SIGQUIT, lambda signum,frame:self.graceful_shutdown())
-        signal.signal(signal.SIGUSR1, lambda signum,frame:self.kill_child())
+        signal.signal(signal.SIGTERM, lambda _1, _2: self.shutdown())
+        signal.signal(signal.SIGINT, lambda _1, _2: self.shutdown())
+        signal.signal(signal.SIGQUIT, lambda _1, _2: self.graceful_shutdown())
+        signal.signal(signal.SIGUSR1, lambda _1, _2: self.kill_child())
 
     def reset_signal_handlers(self):
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
@@ -121,13 +122,17 @@ class DrequeWorker(Dreque):
         signal.signal(signal.SIGUSR1, signal.SIG_DFL)
 
     def shutdown(self, signum=None, frame=None):
-        """Shutdown immediately without waiting for job to complete"""
+        """
+        Shutdown immediately without waiting for job to complete.
+        """
         self.log.info("Worker %s shutting down" % self.worker_id)
         self._shutdown = "forced"
         self.kill_child()
 
     def graceful_shutdown(self, signum=None, frame=None):
-        """Shutdown gracefully waiting for job to finish"""
+        """
+        Shutdown gracefully waiting for job to finish.
+        """
         self.log.info("Worker %s shutting down gracefully" % self.worker_id)
         self._shutdown = "graceful"
 
@@ -150,14 +155,12 @@ class DrequeWorker(Dreque):
         self.stats.clear("failed:"+self.worker_id)
 
     def working_on(self, job):
-        self.redis.set(self._redis_key("worker:"+self.worker_id),
-            dict(
-                queue = job['queue'],
-                func = job['func'],
-                args = job['args'],
-                kwargs = job['kwargs'],
-                run_at = time.time(),
-            ))
+        self.redis.set(self._redis_key("worker:" + self.worker_id),
+                       {'queue': job['queue'],
+                        'func': job['func'],
+                        'args': job['args'],
+                        'kwargs': job['kwargs'],
+                        'run_at': time.time()})
 
     def done_working(self):
         self.processed()
@@ -190,11 +193,11 @@ class DrequeWorker(Dreque):
         return self.redis.smembers(self._redis_key("workers"))
 
     def working(self):
-        workers = self.list_workers()
+        workers = self.workers()
         if not workers:
             return []
 
-        keys = [self._redis_key("worker:"+x) for x in workers]
+        keys = [self._redis_key("worker:" + x) for x in workers]
         return dict((x, y) for x, y in zip(self.redis.mget(workers, keys)))
 
     def worker_exists(self, worker_id):

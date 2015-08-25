@@ -1,8 +1,3 @@
-
-try:
-    import json
-except ImportError:
-    import simplejson as json
 import logging
 import time
 from redis import Redis, ResponseError
@@ -10,8 +5,11 @@ from redis import Redis, ResponseError
 from dreque import serializer
 from dreque.stats import StatsCollector
 
+
 class Dreque(object):
-    def __init__(self, server, db=None, key_prefix="dreque:", serializer=serializer):
+
+    def __init__(self, server, db=None, key_prefix="dreque:",
+                 serializer=serializer):
         self.log = logging.getLogger("dreque")
 
         if isinstance(server, (tuple, list)):
@@ -39,19 +37,26 @@ class Dreque(object):
         if delay:
             if delay < 31536000:
                 delay = int(delay + time.time())
-            # TODO: In Redis>=1.1 can use an ordered set: zadd(delayed, delay, encoded_item)
-            self.redis.lpush(self._delayed_key(queue), "%.12x:%s" % (delay, self.encode(item)))
+            # TODO: In Redis>=1.1 can use an ordered set:
+            # zadd(delayed, delay, encoded_item)
+            self.redis.lpush(self._delayed_key(queue),
+                             "%.12x:%s" % (delay, self.encode(item)))
         else:
             self.redis.lpush(self._queue_key(queue), self.encode(item))
 
     def check_delayed(self, queue, num=10):
-        """Check for available jobs in the delayed queue and move them to the live queue"""
-        # TODO: In Redis>=1.1 can use an ordered set: zrangebyscore(delayed, 0, current_time)
+        """
+        Check for available jobs in the delayed queue and move them to the
+        live queue.
+        """
+        # TODO: In Redis>=1.1 can use an ordered set:
+        # zrangebyscore(delayed, 0, current_time)
         delayed_key = self._delayed_key(queue)
         queue_key = self._queue_key(queue)
         try:
-            jobs = self.redis.sort(delayed_key, start=0, num=num, alpha=True) or []
-        except ResponseError, exc:
+            jobs = self.redis.sort(delayed_key, start=0,
+                                   num=num, alpha=True) or []
+        except ResponseError as exc:
             if str(exc) != "no such key":
                 raise
             return
@@ -61,7 +66,8 @@ class Dreque(object):
             available = int(available, 16)
             if available < now:
                 if self.redis.lrem(delayed_key, j) > 0:
-                    # Only copy the job if it still exists.. nobody else got to it first
+                    # Only copy the job if it still exists... nobody else got
+                    # to it first
                     self.redis.lpush(queue_key, encoded_job)
 
     def pop(self, queue):
@@ -82,8 +88,8 @@ class Dreque(object):
     def list_range(self, key, start=0, count=1):
         if count == 1:
             return self.decode(self.redis.lindex(key, start))
-        else:
-            return [self.decode(x) for x in self.redis.lrange(key, start, start+count-1)]
+        return [self.decode(x)
+                for x in self.redis.lrange(key, start, start + count - 1)]
 
     # High level
 
@@ -92,13 +98,19 @@ class Dreque(object):
         max_retries = kwargs.pop('_max_retries', 5)
         if not isinstance(func, basestring):
             func = "%s.%s" % (func.__module__, func.__name__)
-        self.push(queue, dict(func=func, args=args, kwargs=kwargs, retries_left=max_retries), delay=delay)
+        self.push(queue,
+                  {'func': func,
+                   'args': args,
+                   'kwargs': kwargs,
+                   'retries_left': max_retries},
+                  delay=delay)
 
     def dequeue(self, queues, worker_queue=None):
         now = time.time()
         for q in queues:
             if worker_queue:
-                msg = self.redis.poppush(self._queue_key(source_queue), self._redis_key(dest_queue))
+                msg = self.redis.poppush(self._queue_key(source_queue),
+                                         self._redis_key(dest_queue))
                 if msg:
                     msg = self.decode(msg)
             else:
@@ -106,7 +118,7 @@ class Dreque(object):
             if msg:
                 msg['queue'] = q
                 return msg
- 
+
     # Queue methods
 
     def queues(self):
