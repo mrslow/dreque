@@ -14,7 +14,8 @@ SUPPORTED_DISPATCHERS = ("nofork", "fork")  # "pool"
 
 
 class DrequeWorker(Dreque):
-    def __init__(self, queues, server, db=None, dispatcher="fork"):
+
+    def __init__(self, queues, server="127.0.0.1", db=None, dispatcher="fork"):
         self.queues = queues
         self.function_cache = {}
         super(DrequeWorker, self).__init__(server, db)

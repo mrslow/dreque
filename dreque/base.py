@@ -8,7 +8,7 @@ from dreque.stats import StatsCollector
 
 class Dreque(object):
 
-    def __init__(self, server, db=None, key_prefix="dreque:",
+    def __init__(self, server="127.0.0.1", db=None, key_prefix="dreque:",
                  serializer=serializer):
         self.log = logging.getLogger("dreque")
 
