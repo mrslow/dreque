@@ -76,7 +76,8 @@ class Dreque(object):
         return self.decode(msg) if msg else None
 
     def poppush(self, source_queue, dest_queue):
-        msg = self.redis.poppush(self._queue_key(source_queue), self._queue_key(dest_queue))
+        msg = self.redis.rpoplpush(self._queue_key(source_queue),
+                                   self._queue_key(dest_queue))
         return self.decode(msg) if msg else None
 
     def size(self, queue):
@@ -106,17 +107,16 @@ class Dreque(object):
                   delay=delay)
 
     def dequeue(self, queues, worker_queue=None):
-        now = time.time()
-        for q in queues:
+        for queue in queues:
             if worker_queue:
-                msg = self.redis.poppush(self._queue_key(source_queue),
-                                         self._redis_key(dest_queue))
+                msg = self.redis.rpoplpush(self._queue_key(queue),
+                                           self._redis_key(worker_queue))
                 if msg:
                     msg = self.decode(msg)
             else:
-                msg = self.pop(q)
+                msg = self.pop(queue)
             if msg:
-                msg['queue'] = q
+                msg['queue'] = queue
                 return msg
 
     # Queue methods
