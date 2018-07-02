@@ -15,7 +15,7 @@ class Dreque(object):
         if isinstance(server, (tuple, list)):
             host, port = server
             self.redis = Redis(server[0], server[1], db=db)
-        elif isinstance(server, basestring):
+        elif isinstance(server, str):
             host = server
             port = 6379
             if ':' in server:
@@ -35,40 +35,26 @@ class Dreque(object):
         self.watch_queue(queue)
 
         if delay:
-            if delay < 31536000:
-                delay = int(delay + time.time())
-            # TODO: In Redis>=1.1 can use an ordered set:
-            # zadd(delayed, delay, encoded_item)
-            self.redis.lpush(self._delayed_key(queue),
-                             "%.12x:%s" % (delay, self.encode(item)))
+            delay = time.time() + delay
+            self.redis.zadd(self._delayed_key(queue), self.encode(item), delay)
+            self.log.debug(f"Added {delay:.4f} {item}")
         else:
             self.redis.lpush(self._queue_key(queue), self.encode(item))
+            self.log.debug(f"Added {item}")
 
-    def check_delayed(self, queue, num=10):
+    def check_delayed(self, queue, num=100):
         """
         Check for available jobs in the delayed queue and move them to the
         live queue.
         """
-        # TODO: In Redis>=1.1 can use an ordered set:
-        # zrangebyscore(delayed, 0, current_time)
         delayed_key = self._delayed_key(queue)
         queue_key = self._queue_key(queue)
-        try:
-            jobs = self.redis.sort(delayed_key, start=0,
-                                   num=num, alpha=True) or []
-        except ResponseError as exc:
-            if str(exc) != "no such key":
-                raise
-            return
         now = time.time()
+        jobs = self.redis.zrangebyscore(delayed_key, 0, now, start=0, num=num)
+        self.log.debug(f"Popped {len(jobs)} delayed jobs")
         for j in jobs:
-            available, encoded_job = j.split(':', 1)
-            available = int(available, 16)
-            if available < now:
-                if self.redis.lrem(delayed_key, j) > 0:
-                    # Only copy the job if it still exists... nobody else got
-                    # to it first
-                    self.redis.lpush(queue_key, encoded_job)
+            self.redis.zrem(delayed_key, j)
+            self.redis.lpush(queue_key, j)
 
     def pop(self, queue):
         self.check_delayed(queue)
@@ -97,7 +83,7 @@ class Dreque(object):
     def enqueue(self, queue, func, *args, **kwargs):
         delay = kwargs.pop('_delay', None)
         max_retries = kwargs.pop('_max_retries', 5)
-        if not isinstance(func, basestring):
+        if not isinstance(func, str):
             func = "%s.%s" % (func.__module__, func.__name__)
         self.push(queue,
                   {'func': func,

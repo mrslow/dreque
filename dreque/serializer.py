@@ -77,10 +77,10 @@ def dumps(*args, **kwargs):
     kwargs['cls'] = JSONEncoder
     kwargs['indent'] = False
     st = json.dumps(*args, **kwargs)
-    return zlib.compress(st)
+    return zlib.compress(st.encode())
 
 
 def loads(st, *args, **kwargs):
-    st = zlib.decompress(st)
+    st = zlib.decompress(st).decode()
     kwargs['cls'] = JSONDecoder
     return json.loads(st, *args, **kwargs)

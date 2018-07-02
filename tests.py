@@ -18,7 +18,7 @@ def test_func(tempfile, text, delay=0, fail=False):
             fp.write(text)
         raise Exception("")
     with open(tempfile, "wb") as fp:
-        fp.write(text)
+        fp.write(text.encode())
 
 
 class TestDreque(unittest.TestCase):
@@ -41,18 +41,18 @@ class TestDreque(unittest.TestCase):
 
     def testSimple(self):
         self.dreque.push("test", "foo")
-        self.failUnlessEqual(self.dreque.size("test"), 1)
-        self.failUnlessEqual(self.dreque.pop("test"), "foo")
-        self.failUnlessEqual(self.dreque.pop("test"), None)
-        self.failUnlessEqual(self.dreque.size("test"), 0)
+        self.assertEqual(self.dreque.size("test"), 1)
+        self.assertEqual(self.dreque.pop("test"), "foo")
+        self.assertEqual(self.dreque.pop("test"), None)
+        self.assertEqual(self.dreque.size("test"), 0)
 
     def testFunction(self):
         self.dreque.enqueue("test", tests.test_func, "positional")
-        self.failUnlessEqual(self.dreque.dequeue(["test"]),
+        self.assertEqual(self.dreque.dequeue(["test"]),
                              dict(queue="test", func="tests.test_func",
                                   args=["positional"], kwargs={}, retries_left=5))
         self.dreque.enqueue("test", tests.test_func, keyword="argument")
-        self.failUnlessEqual(self.dreque.dequeue(["test"]),
+        self.assertEqual(self.dreque.dequeue(["test"]),
                              dict(queue="test", func="tests.test_func",
                                   args=[], kwargs={'keyword':"argument"},
                                   retries_left=5))
@@ -61,8 +61,8 @@ class TestDreque(unittest.TestCase):
         self.dreque.enqueue("test", tests.test_func, self.tempfile, "worker_test")
         worker = DrequeWorker(["test"], db=self.db)
         worker.work(0)
-        self.failUnlessEqual(self._get_output(), "worker_test")
-        self.failUnlessEqual(self.dreque.stats.get("processed"), 1)
+        self.assertEqual(self._get_output(), b"worker_test")
+        self.assertEqual(self.dreque.stats.get("processed"), 1)
 
     def testKeywordWorker(self):
         import tests
@@ -70,13 +70,13 @@ class TestDreque(unittest.TestCase):
                             text="worker_test")
         worker = DrequeWorker(["test"], db=self.db)
         worker.work(0)
-        self.failUnlessEqual(self._get_output(), "worker_test")
+        self.assertEqual(self._get_output(), b"worker_test")
 
     def testDelayedJob(self):
         self.dreque.enqueue("test", tests.test_func, val="worker_test", _delay=1)
-        self.failUnlessEqual(self.dreque.dequeue("test"), None)
+        self.assertEqual(self.dreque.dequeue("test"), None)
         time.sleep(1.5)
-        self.failUnlessEqual(self.dreque.dequeue(["test"]),
+        self.assertEqual(self.dreque.dequeue(["test"]),
                              dict(queue="test", func="tests.test_func",
                                   args=[], kwargs={'val':"worker_test"},
                                   retries_left=5))
@@ -94,8 +94,8 @@ class TestDreque(unittest.TestCase):
         # worker_child.terminate()
         os.kill(worker_child.pid, signal.SIGQUIT)
         worker_child.join()
-        self.failUnlessEqual(worker_child.exitcode, 0)
-        self.failUnlessEqual(self._get_output(), "graceful")
+        self.assertEqual(worker_child.exitcode, 0)
+        self.assertEqual(self._get_output(), b"graceful")
 
     def testForcedShutdown(self):
         def worker():
@@ -110,8 +110,8 @@ class TestDreque(unittest.TestCase):
         time.sleep(0.5)  # Make sure the worker has spawned a child already
         worker_child.terminate()
         worker_child.join()
-        self.failUnlessEqual(worker_child.exitcode, 0)
-        self.failUnlessEqual(self._get_output(), "")
+        self.assertEqual(worker_child.exitcode, 0)
+        self.assertEqual(self._get_output(), b"")
 
     def testRetries(self):
         def worker():
@@ -126,8 +126,8 @@ class TestDreque(unittest.TestCase):
         time.sleep(3)  # Give enough time for worker to grab and execute the job
         os.kill(worker_child.pid, signal.SIGQUIT)
         worker_child.join()
-        self.failUnlessEqual(worker_child.exitcode, 0)
-        self.failUnlessEqual(self._get_output(), "..")
+        self.assertEqual(worker_child.exitcode, 0)
+        self.assertEqual(self._get_output(), b"..")
 
 
 if __name__ == '__main__':

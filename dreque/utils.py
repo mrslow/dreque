@@ -9,7 +9,7 @@ except ImportError:
 
         def setprocname(name):
             buff = create_string_buffer(len(name)+1)
-            buff.value = name
+            buff.value = name.encode()
             libc.prctl(15, byref(buff), 0, 0, 0)
             # FreeBSD: libc.setproctitle(name)
 
